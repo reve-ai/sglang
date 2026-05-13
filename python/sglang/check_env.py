@@ -20,7 +20,7 @@ def is_cuda_v2():
 # List of packages to check versions
 PACKAGE_LIST = [
     "sglang",
-    "sglang-kernel",
+    "sglang-kernel-torch211",
     "flashinfer_python",
     "flashinfer_cubin",
     "flashinfer_jit_cache",

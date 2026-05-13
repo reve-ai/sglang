@@ -1168,10 +1168,14 @@ def _set_envs_and_config(server_args: ServerArgs):
                 "at https://docs.flashinfer.ai/installation.html.",
             )
         if _is_cuda:
+            # reve fork: kernel wheel is mirrored to AR under the
+            # `sglang-kernel-torch211` distribution name (see python/pyproject.toml
+            # Requires-Dist). The bare upstream name `sglang-kernel` does not
+            # have dist-info installed and would raise PackageNotFoundError here.
             assert_pkg_version(
-                "sglang-kernel",
+                "sglang-kernel-torch211",
                 "0.4.2",
-                "Please reinstall the latest version with `pip install sglang-kernel --force-reinstall`",
+                "Please reinstall the latest version with `pip install sglang-kernel-torch211 --force-reinstall`",
             )
 
     # Signal handlers can only be registered from the main thread.
