@@ -1082,9 +1082,22 @@ class ForwardBatch(ForwardBatchDeepSeekMHAMixin):
                         :,
                         extend_prefix_len : extend_prefix_len + extend_seq_len,
                     ]
-                    if mrope_positions.numel() == 0:
-                        mrope_positions = self._expand_mrope_from_input(
-                            mm_input, self.seq_lens_cpu[batch_idx]
+                    if mrope_positions.shape[1] < extend_seq_len:
+                        # New tokens extend past the cached mrope_positions (which
+                        # only covers the original prompt). For text tokens after
+                        # the image, all three axes share the same value:
+                        # linear_pos + mrope_position_delta.
+                        delta = mm_input.mrope_position_delta.flatten()  # (1,)
+                        linear_pos = torch.arange(
+                            extend_prefix_len + mrope_positions.shape[1],
+                            extend_prefix_len + extend_seq_len,
+                            dtype=torch.int64,
+                        )
+                        suffix = (linear_pos + delta).unsqueeze(0).repeat(3, 1)
+                        mrope_positions = (
+                            suffix
+                            if mrope_positions.numel() == 0
+                            else torch.cat([mrope_positions, suffix], dim=1)
                         )
                 mrope_positions_list[batch_idx] = mrope_positions
 
