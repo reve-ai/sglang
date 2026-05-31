@@ -854,6 +854,12 @@ class EAGLEWorker(TpModelWorker):
                 out_cache_loc = out_cache_loc.contiguous()
             forward_batch.out_cache_loc = out_cache_loc[i]
             forward_batch.positions.add_(1)
+            # Advance mRoPE positions in lockstep with `positions` (the draft
+            # reads mrope_positions when mRoPE is enabled). Without this, every
+            # tree step after the first applies the step-0 RoPE position,
+            # degrading acceptance for mRoPE models. See the spec-v2 worker.
+            if forward_batch.mrope_positions is not None:
+                forward_batch.mrope_positions.add_(1)
             forward_batch.attn_backend = self.draft_attn_backend.attn_backends[i]
             spec_info.hidden_states = hidden_states
 

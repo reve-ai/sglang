@@ -405,6 +405,15 @@ class EAGLEDraftCudaGraphRunner:
             forward_batch.out_cache_loc
         )
         buffers.positions[:raw_num_token].copy_(forward_batch.positions)
+        # The captured graph advances mrope_positions per draft step (see
+        # draft_forward), but the per-replay INITIAL value must be copied in or
+        # the draft decodes multimodal sequences with the stale/zero buffer
+        # (allocated zeros, never refreshed) -> wrong RoPE -> acceptance
+        # collapses at chain steps >=1 for mRoPE models.
+        if forward_batch.mrope_positions is not None:
+            buffers.mrope_positions[:, :raw_num_token].copy_(
+                forward_batch.mrope_positions
+            )
         maybe_detect_nan(
             forward_batch.spec_info.topk_p,
             "EagleDraftCudaGraphRunner.replay: topk_p",

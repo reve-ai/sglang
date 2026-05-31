@@ -448,6 +448,14 @@ class EagleDraftWorker(BaseDraftWorker):
             forward_batch.input_ids = input_ids
             forward_batch.out_cache_loc = out_cache_loc[i]
             forward_batch.positions.add_(1)
+            # Advance mRoPE positions in lockstep with `positions`. The draft
+            # model reads `forward_batch.mrope_positions` whenever mRoPE is
+            # enabled (qwen3-vl draft); leaving it fixed at the step-0 value
+            # makes every chain step after the first apply the wrong RoPE
+            # position, collapsing acceptance at steps >=1 for spec decoding.
+            # Post-image (decode) tokens advance uniformly across all 3 dims.
+            if forward_batch.mrope_positions is not None:
+                forward_batch.mrope_positions.add_(1)
             forward_batch.attn_backend = self.draft_attn_backend.attn_backends[i]
             spec_info.hidden_states = hidden_states
 
