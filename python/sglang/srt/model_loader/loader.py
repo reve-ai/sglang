@@ -324,6 +324,15 @@ def _post_load_weights(model: nn.Module) -> None:
     # `is_nextn=True`, so the loader doesn't need to know.
     if hasattr(model, "post_load_weights"):
         model.post_load_weights()
+    # The same "bypass load_weights()" rule applies to GemmaRMSNorm's derived,
+    # non-persistent gemma_weight (= weight + 1) buffer: it is refreshed only in the
+    # norm's weight_loader, so a bulk weight.data copy (dummy / sharded / remote
+    # instance peer pull / remote fs) leaves it stale at its all-ones init -> the norm
+    # becomes a no-op -> garbage output. Refresh it here, the one hook every bypass
+    # loader already calls.
+    for module in model.modules():
+        if hasattr(module, "gemma_weight") and hasattr(module, "weight"):
+            torch.add(module.weight.data, 1.0, out=module.gemma_weight)
 
 
 class BaseModelLoader(ABC):
