@@ -2146,6 +2146,17 @@ class RemoteInstanceModelLoader(BaseModelLoader):
                     src=0,
                     group=client._model_update_group,
                 )
+            # (1+w)/Gemma RMSNorm uses a DERIVED, non-persistent buffer
+            # `gemma_weight = weight + 1`, normally refreshed in the norm's
+            # _weight_loader. The broadcast above writes weight.data directly,
+            # bypassing _weight_loader, so gemma_weight keeps its init value
+            # (weight=0 -> all-ones) and the norm becomes a no-op -> garbage output.
+            # Recompute it from the freshly-received weight. (Transferring the buffer
+            # also works but is redundant; state_dict()-based copies miss it since
+            # it is non-persistent.)
+            for mod in model.modules():
+                if hasattr(mod, "gemma_weight") and hasattr(mod, "weight"):
+                    mod.gemma_weight = mod.weight.data + 1.0
             torch.cuda.synchronize()
 
             if hasattr(model, "post_load_weights"):
