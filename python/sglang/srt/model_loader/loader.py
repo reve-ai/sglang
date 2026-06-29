@@ -2024,6 +2024,24 @@ class GGUFModelLoader(BaseModelLoader):
         return model
 
 
+def _post_load_weights(model: nn.Module) -> None:
+    """Run a model's post-load fixup after a loader that bypassed ``load_weights``.
+
+    Bulk ``weight.data`` copies (remote-instance peer pull over nccl/transfer-engine,
+    distributed weight update) skip each module's ``weight_loader``. GemmaRMSNorm
+    caches a DERIVED, non-persistent buffer ``gemma_weight = weight + 1`` refreshed
+    only in that ``weight_loader``, so a bypass load leaves it stale at its all-ones
+    init -> the norm becomes a no-op -> garbage output. Refresh it here, the one hook
+    every bypass loader calls. No-op on builds whose GemmaRMSNorm computes ``(1 + w)``
+    inline without the cached buffer.
+    """
+    if hasattr(model, "post_load_weights"):
+        model.post_load_weights()
+    for module in model.modules():
+        if hasattr(module, "gemma_weight") and hasattr(module, "weight"):
+            torch.add(module.weight.data, 1.0, out=module.gemma_weight)
+
+
 class RemoteInstanceModelLoader(BaseModelLoader):
     """Model loader that can load Tensors from remote sglang instance."""
 
@@ -2146,21 +2164,8 @@ class RemoteInstanceModelLoader(BaseModelLoader):
                     src=0,
                     group=client._model_update_group,
                 )
-            # (1+w)/Gemma RMSNorm uses a DERIVED, non-persistent buffer
-            # `gemma_weight = weight + 1`, normally refreshed in the norm's
-            # _weight_loader. The broadcast above writes weight.data directly,
-            # bypassing _weight_loader, so gemma_weight keeps its init value
-            # (weight=0 -> all-ones) and the norm becomes a no-op -> garbage output.
-            # Recompute it from the freshly-received weight. (Transferring the buffer
-            # also works but is redundant; state_dict()-based copies miss it since
-            # it is non-persistent.)
-            for mod in model.modules():
-                if hasattr(mod, "gemma_weight") and hasattr(mod, "weight"):
-                    mod.gemma_weight = mod.weight.data + 1.0
             torch.cuda.synchronize()
-
-            if hasattr(model, "post_load_weights"):
-                model.post_load_weights()
+            _post_load_weights(model)
         end_get_weights_tic = time.time()
         logger.debug(
             f"finish getting all weights from remote instance, time used: {(end_get_weights_tic - start_get_weights_tic):.4f}s"
@@ -2223,8 +2228,7 @@ class RemoteInstanceModelLoader(BaseModelLoader):
             logger.error(f"batch transfer failed, error: {ret}")
             return False
 
-        if hasattr(model, "post_load_weights"):
-            model.post_load_weights()
+        _post_load_weights(model)
 
         return True
 

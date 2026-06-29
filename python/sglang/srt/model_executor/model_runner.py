@@ -2455,6 +2455,12 @@ def _model_load_weights_direct(model, named_tensors: List[Tuple[str, torch.Tenso
     params_dict = dict(model.named_parameters())
     for name, tensor in named_tensors:
         default_weight_loader(params_dict[name], tensor)
+    # default_weight_loader bypasses each module's custom weight_loader, so refresh
+    # GemmaRMSNorm's derived (1+w) buffer (rationale: loader._post_load_weights).
+    # No-op on builds whose GemmaRMSNorm computes (1+w) inline without the buffer.
+    for module in model.modules():
+        if hasattr(module, "gemma_weight") and hasattr(module, "weight"):
+            torch.add(module.weight.data, 1.0, out=module.gemma_weight)
 
 
 def _unwrap_tensor(tensor, tp_rank, device):
