@@ -535,6 +535,12 @@ class EAGLEDraftCudaGraphRunner(DecodeCudaGraphRunner):
         ):
             copy_dsts.append(buffers.bootstrap_room_ids_int[:raw_bs])
             copy_srcs.append(forward_batch.bootstrap_room_ids_int)
+        # Seed the per-replay initial mrope_positions into the captured buffer
+        # (allocated zeros, never refreshed) so mRoPE graph decode doesn't run
+        # the draft chain at RoPE position ~0. Mirrors the positions seed above.
+        if forward_batch.mrope_positions is not None:
+            copy_dsts.append(buffers.mrope_positions[:, :raw_num_token])
+            copy_srcs.append(forward_batch.mrope_positions)
         _grouped_foreach_copy_(copy_dsts, copy_srcs)
 
         # hidden_states is large + contiguous: copy_() uses the cudaMemcpyAsync
@@ -574,6 +580,8 @@ class EAGLEDraftCudaGraphRunner(DecodeCudaGraphRunner):
             forward_batch.seq_lens = buffers.seq_lens[:bs]
             forward_batch.req_pool_indices = buffers.req_pool_indices[:bs]
             forward_batch.positions = buffers.positions[:num_tokens]
+            if forward_batch.mrope_positions is not None:
+                forward_batch.mrope_positions = buffers.mrope_positions[:, :num_tokens]
             if raw_seq_lens_sum is not None:
                 forward_batch.seq_lens_sum = (
                     raw_seq_lens_sum + (bs - raw_bs) * self.seq_len_fill_value
@@ -613,6 +621,8 @@ class EAGLEDraftCudaGraphRunner(DecodeCudaGraphRunner):
             out = self._postprocess_output_to_raw_bs(out, raw_bs)
             forward_batch.batch_size = raw_bs
             forward_batch.positions = buffers.positions[:raw_num_token]
+            if forward_batch.mrope_positions is not None:
+                forward_batch.mrope_positions = buffers.mrope_positions[:, :raw_num_token]
             forward_batch.seq_lens = buffers.seq_lens[:raw_bs]
             forward_batch.req_pool_indices = buffers.req_pool_indices[:raw_bs]
             if buffers.rids_int is not None and forward_batch.rids_int is not None:
