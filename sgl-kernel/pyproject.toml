@@ -7,8 +7,8 @@ requires = [
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "sglang-kernel"
-version = "0.4.4"
+name = "sglang-kernel-torch213"
+version = "0.4.4+torch213"
 authors = [
   { name="SGLang Kernel Team", email="sglang@lmsys.org" },
 ]
