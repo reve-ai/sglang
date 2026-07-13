@@ -679,6 +679,11 @@ class EagleDraftWorker(EagleDraftWorkerBase):
                 topk_index = self.hot_token_id[topk_index]
             hidden_states = logits_output.hidden_states
             forward_batch.positions.add_(1)
+            # Advance mRoPE positions in lockstep with `positions`: mRoPE drafts
+            # (e.g. Qwen3-VL) read forward_batch.mrope_positions, so a fixed value
+            # applies the step-0 RoPE position for every chain step >=1.
+            if forward_batch.mrope_positions is not None:
+                forward_batch.mrope_positions.add_(1)
 
         if self.index_share_for_mtp_iteration:
             forward_batch.topk_indices = None
